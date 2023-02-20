@@ -12,7 +12,7 @@
 
 3 channels:
   1. *405:* Nuclei
-  3. *561:* SFPQ
+  3. *561:* SFPQ cells
 
 ### Plugin description
 
@@ -23,8 +23,8 @@
 ### Dependencies
 
 * **3DImageSuite** Fiji plugin
-* **Cellpose** conda environment + *cyto2* model
+* **Cellpose** conda environment + *cyto* model
 
 ### Version history
 
-Version 1 released on February 17 February, 2023
+Version 1 released on February 20 February, 2023
