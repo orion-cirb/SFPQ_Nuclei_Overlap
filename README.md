@@ -10,7 +10,7 @@
 
 3D images taken with a x63 objective
 
-3 channels:
+2 channels:
   1. *405:* Nuclei
   3. *561:* SFPQ cells
 
