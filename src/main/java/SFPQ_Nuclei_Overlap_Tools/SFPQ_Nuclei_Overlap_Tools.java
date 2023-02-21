@@ -9,6 +9,7 @@ import ij.io.FileSaver;
 import ij.measure.Calibration;
 import ij.plugin.Duplicator;
 import ij.plugin.RGBStackMerge;
+import ij.plugin.ZProjector;
 import java.awt.Color;
 import java.awt.Font;
 import java.io.File;
@@ -40,21 +41,20 @@ public class SFPQ_Nuclei_Overlap_Tools {
     public final ImageIcon icon = new ImageIcon(this.getClass().getResource("/Orion_icon.png"));
     
     public Calibration cal = new Calibration();
-    public float pixVol = 0;
+    public double pixArea = 0;
     String[] chNames = {"Nuclei", "SFPQ cells"};
 
     // Cellpose
-    public int cellPoseDiameter = 60;
+    public int cellPoseDiameter = 70;
     public String cellPoseModel = "cyto";
     public String cellPoseEnvDirPath = (IJ.isWindows()) ? System.getProperty("user.home")+"\\miniconda3\\envs\\CellPose" : "/opt/miniconda3/envs/cellpose";
-    public double cellposeStitchTh = 0.5;
     
     // Nuclei
-    private double minNucVol = 200;
-    private double maxNucVol = 2000;
+    private double minNucArea = 20;
+    private double maxNucArea = 200;
     
     // SFPQ cells
-    private double minSFPQInt = 20;
+    private double minSFPQInt = 50;
     
     
     
@@ -186,28 +186,27 @@ public class SFPQ_Nuclei_Overlap_Tools {
         }
         
         gd.addMessage("Nuclei detection", Font.getFont("Monospace"), Color.blue);
-        gd.addNumericField("Min nucleus volume (µm3):", minNucVol);
-        gd.addNumericField("Max nucleus volume (µm3):", maxNucVol); 
+        gd.addNumericField("Min nucleus area (µm2):", minNucArea);
+        gd.addNumericField("Max nucleus area (µm2):", maxNucArea); 
         
         gd.addMessage("SFPQ cells detection", Font.getFont("Monospace"), Color.blue);
         gd.addNumericField("Min intensity:", minSFPQInt); 
         
         gd.addMessage("Image calibration", Font.getFont("Monospace"), Color.blue);
         gd.addNumericField("XY calibration (µm):", cal.pixelWidth);
-        gd.addNumericField("Z calibration (µm):", cal.pixelDepth);
         gd.showDialog();
         
         String[] ch = new String[chNames.length];
         for (int i = 0; i < chNames.length; i++)
             ch[i] = gd.getNextChoice();
        
-        minNucVol = (float) gd.getNextNumber();
-        maxNucVol = (float) gd.getNextNumber();
+        minNucArea = (float) gd.getNextNumber();
+        maxNucArea = (float) gd.getNextNumber();
         minSFPQInt = gd.getNextNumber();
         
         cal.pixelWidth = cal.pixelHeight = gd.getNextNumber();
-        cal.pixelDepth = gd.getNextNumber();
-        pixVol = (float) (cal.pixelWidth*cal.pixelHeight*cal.pixelDepth);
+        cal.pixelDepth = 1;
+        pixArea = cal.pixelWidth*cal.pixelHeight;
         
         if(gd.wasCanceled())
             ch = null;
@@ -226,6 +225,20 @@ public class SFPQ_Nuclei_Overlap_Tools {
     
     
     /**
+     * Do Z projection
+     */
+    public ImagePlus doZProjection(ImagePlus img, int param) {
+        ZProjector zproject = new ZProjector();
+        zproject.setMethod(param);
+        zproject.setStartSlice(1);
+        zproject.setStopSlice(img.getNSlices());
+        zproject.setImage(img);
+        zproject.doProjection();
+       return(zproject.getProjection());
+    }
+    
+    
+    /**
      * Look for all 3D cells in a Z-stack: 
      * - apply CellPose in 2D slice by slice 
      * - let CellPose reconstruct cells in 3D using the stitch threshold parameters
@@ -235,22 +248,20 @@ public class SFPQ_Nuclei_Overlap_Tools {
 
         // Define CellPose settings
         CellposeTaskSettings settings = new CellposeTaskSettings(cellPoseModel, 1, cellPoseDiameter, cellPoseEnvDirPath);
-        settings.setStitchThreshold(cellposeStitchTh);
         settings.useGpu(true);
        
         // Run CellPose
         CellposeSegmentImgPlusAdvanced cellpose = new CellposeSegmentImgPlusAdvanced(settings, img);
         ImagePlus imgOut = cellpose.run();
-        imgOut.setCalibration(cal);
+        imgOut.setCalibration(cal);                
        
         // Get cells as a population of objects
         Objects3DIntPopulation pop = new Objects3DIntPopulation(ImageHandler.wrap(imgOut));
         System.out.println(pop.getNbObjects() + " CellPose detections");
        
         // Filter cells by size and intensity
-        pop = zFilterPop(pop);
         if(nuclei) {
-            pop = new Objects3DIntPopulationComputation​(pop).getFilterSize​(minNucVol/pixVol, maxNucVol/pixVol);
+            pop = new Objects3DIntPopulationComputation​(pop).getFilterSize​(minNucArea/pixArea, maxNucArea/pixArea);
             System.out.println(pop.getNbObjects() + " detections remaining after size filtering");
         } else {
             filterDetectionsByIntensity(pop, img, minSFPQInt);
@@ -264,21 +275,6 @@ public class SFPQ_Nuclei_Overlap_Tools {
     } 
     
     
-    /*
-     * Remove objects present in only one z slice from population 
-     */
-    public Objects3DIntPopulation zFilterPop (Objects3DIntPopulation pop) {
-        Objects3DIntPopulation popZ = new Objects3DIntPopulation();
-        for (Object3DInt obj : pop.getObjects3DInt()) {
-            int zmin = obj.getBoundingBox().zmin;
-            int zmax = obj.getBoundingBox().zmax;
-            if (zmax != zmin)
-                popZ.addObject(obj);
-        }
-        return popZ;
-    }
-    
-
     /**
      * Filter cells by intensity
      */
@@ -291,9 +287,8 @@ public class SFPQ_Nuclei_Overlap_Tools {
     /**
      * Find coloc objects in pop1 colocalized with pop2
      */
-    public ArrayList<Cell> findColocPop (Objects3DIntPopulation pop1, Objects3DIntPopulation pop2, ImagePlus img) {
+    public ArrayList<Cell> findColocPop (Objects3DIntPopulation pop1, Objects3DIntPopulation pop2) {
         AtomicInteger label = new AtomicInteger(0);
-        ImageHandler imh = ImageHandler.wrap(img);
         ArrayList<Cell> cells = new ArrayList<>();
         if (pop1.getNbObjects() > 0 && pop2.getNbObjects() > 0) {
             MeasurePopulationColocalisation coloc = new MeasurePopulationColocalisation(pop1, pop2);
@@ -307,8 +302,7 @@ public class SFPQ_Nuclei_Overlap_Tools {
                         Object3DInt obj2 = p.getObject3D2();
                         Cell cell = new Cell(obj1, obj2);
                         
-                        double sfpqInt = new MeasureIntensity(obj2, imh).getValueMeasurement(MeasureIntensity.INTENSITY_AVG);
-                        cell.setParams(label.incrementAndGet(), obj1.size()*pixVol, obj2.size()*pixVol, sfpqInt, colocVol*pixVol);
+                        cell.setParams(label.incrementAndGet(), obj1.size()*pixArea, obj2.size()*pixArea, colocVol*pixArea);
                         
                         cells.add(cell);
                     }

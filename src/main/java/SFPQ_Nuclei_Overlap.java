@@ -2,6 +2,7 @@ import SFPQ_Nuclei_Overlap_Tools.Cell;
 import SFPQ_Nuclei_Overlap_Tools.SFPQ_Nuclei_Overlap_Tools;
 import ij.IJ;
 import ij.ImagePlus;
+import ij.gui.WaitForUserDialog;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
@@ -18,6 +19,7 @@ import loci.formats.services.OMEXMLService;
 import loci.plugins.BF;
 import loci.plugins.util.ImageProcessorReader;
 import ij.plugin.PlugIn;
+import ij.plugin.ZProjector;
 import java.io.FileWriter;
 import java.util.ArrayList;
 import loci.plugins.in.ImporterOptions;
@@ -65,7 +67,7 @@ public class SFPQ_Nuclei_Overlap implements PlugIn {
                 outDir.mkdir();
             }
             // Write header for nuclei parameters file
-            String header = "Image name\tNucleus ID\tNucleus volume (µm3)\tSFPQ volume (µm3)\tSFPQ mean intensity\tOverlap volume (µm3)\tOverlap/SFPQ volume (%)\n";
+            String header = "Image name\tNucleus ID\tNucleus area (µm2)\tSFPQ area (µm2)\tOverlap volume (µm2)\tOverlap/SFPQ volume (%)\n";
             FileWriter fwResults = new FileWriter(outDirResults + "results.xls", false);
             results = new BufferedWriter(fwResults);
             results.write(header);
@@ -107,34 +109,39 @@ public class SFPQ_Nuclei_Overlap implements PlugIn {
                 // Open nuclei channel
                 System.out.println("- Analyzing " + chs[0] + " channel -");
                 int indexCh = ArrayUtils.indexOf(channels, chs[0]);
-                ImagePlus imgNucleus = BF.openImagePlus(options)[indexCh];
+                ImagePlus stackNucleus = BF.openImagePlus(options)[indexCh];
+                ImagePlus imgNucleus = tools.doZProjection(stackNucleus, ZProjector.MAX_METHOD);
+                tools.flush_close(stackNucleus); 
                 
                 // Find nuclei
-                System.out.println("Finding " + chs[0] + " nuclei....");
+                System.out.println("Finding nuclei....");
                 Objects3DIntPopulation nucPop = tools.cellposeDetection(imgNucleus, true);
-                System.out.println(nucPop.getNbObjects() + " " + chs[0] + " nuclei found");
+                System.out.println(nucPop.getNbObjects() + " nuclei found");
                 
                 // Open SFPQ channel
                 System.out.println("- Analyzing " + chs[1] + " channel -");
                 indexCh = ArrayUtils.indexOf(channels, chs[1]);
-                ImagePlus imgSFPQ = BF.openImagePlus(options)[indexCh];
+                ImagePlus stackSFPQ = BF.openImagePlus(options)[indexCh];
+                ImagePlus imgSFPQ = tools.doZProjection(stackSFPQ, ZProjector.MAX_METHOD);
+                tools.flush_close(stackSFPQ); 
                 
                 // Find SFPQ cells
+                System.out.println("Finding SFPQ cells....");
                 Objects3DIntPopulation sfpqPop = tools.cellposeDetection(imgSFPQ, false);
-                System.out.println(sfpqPop.getNbObjects() + " " + chs[1] + " SFPQ cells found");
+                System.out.println(sfpqPop.getNbObjects() + " SFPQ cells found");
                 
                 // Colocalize nuclei with SFPQ cells
                 System.out.println("- Colocalizing nuclei with SFPQ cells -");
-                ArrayList<Cell> cells = tools.findColocPop(nucPop, sfpqPop, imgSFPQ);
+                ArrayList<Cell> cells = tools.findColocPop(nucPop, sfpqPop);
                 
                 // Draw results
                 System.out.println("- Saving results -");
-                tools.drawResults(cells, imgNucleus, rootName, outDirResults);
+                tools.drawResults(cells, imgSFPQ, rootName, outDirResults);
                 
                 // Write results
                 for(Cell cell: cells) {
-                    results.write(rootName+"\t"+cell.params.get("label")+"\t"+cell.params.get("nucVol")+"\t"+cell.params.get("sfpqVol")+"\t"+
-                            cell.params.get("sfpqInt")+"\t"+cell.params.get("overlapVol")+"\t"+cell.params.get("overlapPerc")+"\n");
+                    results.write(rootName+"\t"+cell.params.get("label")+"\t"+cell.params.get("nucArea")+"\t"+cell.params.get("sfpqArea")+"\t"+
+                            cell.params.get("overlapArea")+"\t"+cell.params.get("overlapPerc")+"\n");
                     results.flush();
                 }
                 tools.flush_close(imgNucleus); 

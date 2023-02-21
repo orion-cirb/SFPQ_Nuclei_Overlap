@@ -19,12 +19,11 @@ public class Cell {
         this.params = new HashMap<>();
     }
     
-    public void setParams(double label, double nucVol, double sfpqVol, double sfpqInt, double overlapVol) {
+    public void setParams(double label, double nucArea, double sfpqArea, double overlapArea) {
         params.put("label", label);
-        params.put("nucVol", nucVol);
-        params.put("sfpqVol", sfpqVol);
-        params.put("sfpqInt", sfpqInt);
-        params.put("overlapVol", overlapVol);
-        params.put("overlapPerc", overlapVol/sfpqVol*100);
+        params.put("nucArea", nucArea);
+        params.put("sfpqArea", sfpqArea);
+        params.put("overlapArea", overlapArea);
+        params.put("overlapPerc", overlapArea/sfpqArea*100);
     }
 }
