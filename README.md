@@ -16,6 +16,7 @@
 
 ### Plugin description
 
+* Perform max projection of both channels
 * Detect nuclei with Cellpose
 * Detect SFPQ-marked cells with Cellpose
 * Compute overlap between nuclei and SFPQ-marked cells
@@ -27,4 +28,4 @@
 
 ### Version history
 
-Version 1 released on February 20 February, 2023
+Version 1 released on February 21 February, 2023
